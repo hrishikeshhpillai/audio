@@ -77,7 +77,7 @@ def test_batch_process_audio_handles_multiple_files(tmp_path: Path):
         file_paths.append(file_path)
 
     batch_process_audio(
-        file_list=file_paths, output_dir=output_dir, target_sr=16000, force_mono=True
+        file_list=file_paths, output_dir=output_dir, target_sr=16000, force_mono=True, delete_originals=False
     )
 
     assert output_dir.exists(), "Output directory was not created"
