@@ -5,7 +5,7 @@ import concurrent.futures
 
 
 def process_single_file(
-    audio_path: Path, output_path: Path, target_sr: int = 16000, force_mono: bool = True
+    audio_path: Path, output_path: Path, target_sr: int | None = None, force_mono: bool = False
 ) -> bool:
     try:
         waveform, sr = librosa.load(audio_path, sr=target_sr, mono=force_mono)
@@ -20,7 +20,7 @@ def process_single_file(
 
 
 def batch_process_audio(
-    file_list: list[Path], output_dir: Path, target_sr: int = 16000, force_mono: bool = True
+    file_list: list[Path], output_dir: Path, target_sr: int = 16000, force_mono: bool = True, delete_originals: bool =False
 ):
     max_cpus_to_use = 4  # TODO: make this value dynamic
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_cpus_to_use) as executor:
@@ -33,3 +33,8 @@ def batch_process_audio(
 
         for future in concurrent.futures.as_completed(futures):
             future.result()  # TODO: TUI progress bar
+
+    if delete_originals:
+        input_dir = file_list[0].parent 
+        print(f"Cleanup: Deleting original folder {input_dir}")
+        shutil.rmtree(input_dir)
