@@ -1,3 +1,13 @@
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Tool Caches
+.ruff_cache/
+.mypy_cache/
+
 # General
 .DS_Store
 .AppleDouble
