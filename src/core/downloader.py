@@ -2,7 +2,6 @@ import os
 import requests
 from pathlib import Path
 from huggingface_hub import snapshot_download
-import kaggle
 
 def download_from_huggingface(repo_id: str, dest_dir: Path, auth_token: str | None = None) -> bool:
     try:
@@ -17,10 +16,10 @@ def download_from_huggingface(repo_id: str, dest_dir: Path, auth_token: str | No
         print(f"Download Error: {e}")
         return False
 
-def universal_download(
+def universal_downloader(
     source_type: str, source_id: str, dest_dir: Path, auth_token: str | None = None) -> bool:
     if source_type == "hf":
-        return download_huggingface(source_id, dest_dir, auth_token)
+        return download_from_huggingface(source_id, dest_dir, auth_token)
     else:
         print(f"Unknown source type: {source_type}")
         return False
