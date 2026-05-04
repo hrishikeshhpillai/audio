@@ -1,5 +1,6 @@
 import time
 import yaml
+import shutil
 from pathlib import Path
 from InquirerPy import inquirer
 from rich.console import Console
@@ -13,7 +14,7 @@ console = Console()
 WORKSPACE_DIR = Path("./wizard_workspace")
 RAW_DIR = WORKSPACE_DIR / "raw"
 PROCESSED_DIR = WORKSPACE_DIR / "processed"
-CATALOG_PATH = Path("/catalog.yaml")
+CATALOG_PATH = Path("../../catalog.yaml")
 
 def load_catalog(filepath: Path) -> dict:
 
@@ -34,19 +35,20 @@ def load_catalog(filepath: Path) -> dict:
                     ds_type = ds.get("type", "")
                     source = ds.get("source", "")
                     repo_id = ds.get("repo_id", "")
+                    subsets = ds.get("subsets", [])
                     
-                    if not repo_id or name or ds_type or source:
+                    if not repo_id or not name or not ds_type or not source:
                         continue # Skip empty/invalid entries
                         
                     display_name = f"[{ds_type}] {name}"
                     
-                    # Store as "source|repo_id"
-                    datasets_map[display_name] = f"{source}|{repo_id}"
+                    # Store dataset info
+                    datasets_map[display_name] = {"source": source, "repo_id": repo_id, "subsets": subsets}
                     
         except Exception as e:
             console.print(f"[bold red]Error parsing catalog.yaml: {e}[/bold red]")
 
-    datasets_map["Custom URL..."] = "custom"
+    datasets_map["Custom URL..."] = {"source": "custom", "repo_id": "", "subsets": []}
     return datasets_map
 
 def run_wizard():
@@ -67,7 +69,7 @@ def run_wizard():
         console.print("[yellow]Wizard cancelled.[/yellow]")
         return
 
-    if DATASETS[dataset_choice] == "custom":
+    if DATASETS[dataset_choice]["source"] == "custom":
         try:
             source_val = inquirer.text(message="Enter the HuggingFace ID or URL:").execute()
             if not source_val: return
@@ -77,31 +79,66 @@ def run_wizard():
         source_type = "hf" if "/" in source_val and "http" not in source_val else "direct"
         source_id = source_val
     else:
-        source_type, source_id = DATASETS[dataset_choice].split("|")
+        dataset_info = DATASETS[dataset_choice]
+        source_type = dataset_info["source"]
+        source_id = dataset_info["repo_id"]
+        subsets = dataset_info.get("subsets", [])
+        
+        if subsets and len(subsets) > 0:
+            try:
+                subset_choice = inquirer.fuzzy(
+                    message="Select a subset to download:",
+                    choices=subsets,
+                    instruction="(Start typing to filter, arrow keys to navigate)",
+                    max_height="50%"
+                ).execute()
+                if source_type in ["wget", "direct", "zenodo"]:
+                    if not source_id.endswith("/"):
+                        source_id += "/"
+                    source_id += subset_choice
+            except KeyboardInterrupt:
+                console.print("[yellow]Wizard cancelled.[/yellow]")
+                return
 
     try:
         force_mono = inquirer.confirm(message="Force audio to Mono channel?", default=True).execute()
+        
+        fix_length = inquirer.confirm(message="Pad/Truncate audio to a fixed length?", default=False).execute()
+        fixed_length_seconds = None
+        if fix_length:
+            length_input = inquirer.text(
+                message="Enter fixed length in seconds (e.g. 5.0):",
+                validate=lambda val: val.replace('.', '', 1).isdigit() and float(val) > 0,
+                invalid_message="Please enter a valid positive number"
+            ).execute()
+            fixed_length_seconds = float(length_input)
+            
     except KeyboardInterrupt:
         return 
     
-    console.print(f"\n[bold green]Starting pipeline for {source_id}...[/bold green]")
+    console.print(f"\n[bold green]Starting download for {source_id}...[/bold green]")
+    try:
+        success = universal_downloader(source_type, source_id, RAW_DIR)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Download interrupted by user. Cleaning up...[/yellow]")
+        if RAW_DIR.exists():
+            shutil.rmtree(RAW_DIR)
+            RAW_DIR.mkdir(parents=True, exist_ok=True)
+        return
+    
+    if not success:
+        console.print("[bold red] Download failed![/bold red] Check terminal for errors.")
+        return
+        
+    console.print("[green] Dataset downloaded![/green]")
 
+    console.print("\n[bold green]Starting audio processing...[/bold green]")
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         transient=True, 
     ) as progress:
         
-        task1 = progress.add_task("[cyan]Downloading dataset...", total=None)
-        success = universal_downloader(source_type, source_id, RAW_DIR)
-        
-        if not success:
-            progress.stop()
-            console.print("[bold red] Download failed![/bold red] Check terminal for errors.")
-            return
-            
-        progress.update(task1, completed=100, description="[green] Dataset downloaded![/green]")
-
         task2 = progress.add_task("[yellow]Processing audio...", total=None)
         
         files = list(RAW_DIR.rglob("*.wav"))
@@ -114,7 +151,8 @@ def run_wizard():
             file_list=files, 
             output_dir=PROCESSED_DIR, 
             target_sr=16000, 
-            force_mono=force_mono
+            force_mono=force_mono,
+            fixed_length_seconds=fixed_length_seconds
         )
         progress.update(task2, completed=100, description="[green]✔ Audio processed![/green]")
 

@@ -1,7 +1,12 @@
 datasets:
-  - id: ""
-    name: ""
-    type: ""
-    source: ""
-    repo_id: ""
-    description: ""
+  - id: "librispeech"
+    name: "Librispeech"
+    type: "speech"
+    source: "wget"
+    repo_id: "http://www.openslr.org/resources/12"
+    description: "Librispeech corpus"
+    subsets:
+      - "train-clean-100.tar.gz"
+      - "train-clean-360.tar.gz"
+      - "test-clean.tar.gz"
+      - "dev-clean.tar.gz"
